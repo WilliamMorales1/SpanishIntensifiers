@@ -1058,10 +1058,7 @@ def to_sqlite(df, output_filename):
         {" ".join(joins)}
         ORDER BY k.id""")
 
-    con.execute("CREATE INDEX token_source ON token(source_id)")
-    for c in ("Int", "Adj_type"):
-        if c in terms:
-            con.execute(f"CREATE INDEX {_quote('token_' + c)} ON token({_quote(c + '_id')})")
+    # no indexes: a full scan of ~86k tokens takes milliseconds, and they cost 11% of the file
     con.commit()
     con.execute("VACUUM")
     con.close()
