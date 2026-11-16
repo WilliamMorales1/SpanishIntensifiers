@@ -16,8 +16,10 @@ The first training set was the output of an earlier rule pipeline, mapped onto t
 | `pipeline/predict.py` | runs a trained model over a folder; writes the table and the label records |
 | `train/run.sh` | trains the released config in the current env on any GPU machine; extra args go to `train.py` |
 | `train/colab.sh` | trains and predicts on a Colab GPU and downloads the results |
-| `train/kaggle.sh`, `kaggle_train.py` | the same on a Kaggle T4: private dataset + private script kernel |
-| `train/sweep.sh`, `kaggle_sweep.sh`, `kaggle_job.py` | train a list of configs (`name args...` per line) and keep each `metrics.json` in `models/sweep/<name>/`; finished configs are skipped on rerun, `WATCH=1` only follows a running job. Kaggle runs one config per T4 of the T4 x2 |
+| `train/kaggle.sh` | the same on a Kaggle T4: private dataset + private script kernel |
+| `train/sweep.sh`, `kaggle_sweep.sh` | train a list of configs (`name args...` per line) and keep each `metrics.json` in `models/sweep/<name>/`; finished configs are skipped on rerun, `WATCH=1` only follows a running job. Kaggle runs one config per T4 of the T4 x2 |
+| `train/job.sh`, `sweep.py` | what runs on the VM: train + pack + predict, and the config-list runner (one config per GPU) |
+| `train/lib.sh`, `colab_setup.py`, `kaggle_kernel.py` | shared by the runners: packing, model install, Colab start and polling, Kaggle push and polling; the VM-side entry points that unpack the job and run its `cmd.sh` |
 
 ## What the model predicts
 
@@ -99,7 +101,7 @@ On Kaggle instead (needs the `kaggle` CLI with a phone-verified account; dataset
 tmux new -d -s intensifier-ft -c (pwd) 'conda run --no-capture-output -n intensifier-research train/kaggle.sh --model FacebookAI/xlm-roberta-large --batch 8 --lr 2e-5 --epochs 8 > data/kaggle_finetune.log 2>&1'
 ```
 
-It uploads the same tarball as dataset `<user>/intensifier-ft-data`, runs `kaggle_train.py` as kernel `<user>/intensifier-ft` (train, then predict), polls every 5 min and, once the kernel is COMPLETE, unpacks `models/intensifier/` (old one to `models/intensifier.old/`) and the sqlite. Kaggle returns output only after the run ends, so a failed predict means rerunning `predict.py` locally from the downloaded model. `WATCH=1` follows a kernel already pushed. `kaggle_sweep.sh data/finetune/exp/configs.txt` runs a config list the same way (`models/sweep/<name>/` skipped on rerun).
+It uploads the same tarball as dataset `<user>/intensifier-ft-data`, runs `kaggle_kernel.py` as kernel `<user>/intensifier-ft` (`job.sh`: train, then predict), polls every 5 min and, once the kernel is COMPLETE, unpacks `models/intensifier/` (old one to `models/intensifier.old/`) and the sqlite. Kaggle returns output only after the run ends, so a failed predict means rerunning `predict.py` locally from the downloaded model. `WATCH=1` follows a kernel already pushed. `kaggle_sweep.sh data/finetune/exp/configs.txt` runs a config list the same way (`models/sweep/<name>/` skipped on rerun).
 
 `train.py` options: `--model` (any HF encoder with a fast tokenizer, e.g. `PlanTL-GOB-ES/roberta-base-bne`), `--epochs 4`, `--batch 16`, `--lr 3e-5` (encoder), `--head-lr 5e-4`, `--warmup 0.1`, `--max-len 512` (subwords per window, capped by the encoder's positions), `--context 64` (unlabelled subwords seen on each side of a window), `--ptr-dim 256`, `--min-rule 2` (rarer lemma edit rules become "keep the word"), `--ptr dot|biaffine` (pointer scorer; biaffine adds an MLP, bilinear term and candidate prior after Dozat & Manning 2017), `--dist N` (learned pointer bias per word offset up to +-N, 0 = off), `--smoothing 0.1` (label smoothing of the classification heads, 0 = off; pointers stay plain), `--llrd 0.9` (encoder layer-wise lr decay, 1 = off), `--seed`, `--limit N` (N files per split, for smoke tests), `--device`.
 

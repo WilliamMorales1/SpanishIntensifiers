@@ -11,79 +11,28 @@ session=${COLAB_SESSION:-intensifier-sweep}
 gpu=${COLAB_GPU:-T4}
 mkdir -p "$stage" "$repo/models/sweep"
 cd "$repo"
-
-pack() {
-  cp "$configs" "$stage/configs.txt"
-  tar czf "$stage/job.tgz" pipeline train data/finetune/*.json data/finetune/*.jsonl.gz models/sweep
-  cat > "$stage/job.sh" <<'SH'
-cd /content/proj
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-while read -r name args; do
-  [ -z "$name" ] && continue
-  [[ $name == \#* ]] && continue
-  [ -f "models/sweep/$name/metrics.json" ] && continue
-  echo "=== $name $args"
-  if python -u train/train.py --out "tmp/$name" $args; then
-    mkdir -p "models/sweep/$name"
-    cp "tmp/$name/metrics.json" "tmp/$name/labels.json" "models/sweep/$name/"
-  else
-    echo "$name FAILED"
-  fi
-  rm -rf "tmp/$name"
-  tar czf /content/sweep.tgz models/sweep
-done < configs.txt
-echo DONE
-touch /content/DONE
-SH
-}
-
-start() {
-  pack
-  colab stop -s "$session" 2>/dev/null || true
-  colab new -s "$session" --gpu "$gpu"
-  colab upload -s "$session" "$stage/job.tgz" /content/job.tgz
-  colab upload -s "$session" "$stage/job.sh" /content/job.sh
-  colab upload -s "$session" "$stage/configs.txt" /content/configs.txt
-  cat > "$stage/setup_vm.py" <<'PY'
-import subprocess
-# the background job must not hold this cell's stdout, or the kernel stays busy
-cmd = """cd /content && mkdir -p proj && tar xzf job.tgz -C proj && cp configs.txt proj/
-nohup bash job.sh > job.log 2>&1 &"""
-print(subprocess.run(cmd, shell=True, capture_output=True, text=True, executable="/bin/bash").stdout[-500:])
-PY
-  colab exec -s "$session" -f "$stage/setup_vm.py" || echo "setup exec ended early"
-}
+. train/lib.sh
 
 pull() {
-  colab download -s "$session" /content/sweep.tgz "$stage/sweep.tgz" 2>/dev/null && tar xzf "$stage/sweep.tgz" -C "$repo" || true
+  colab download -s "$session" /content/sweep.tgz "$stage/sweep.tgz" > /dev/null 2>&1 && tar xzf "$stage/sweep.tgz" -C "$repo" || true
+}
+start() {
+  cp "$configs" "$stage/configs.txt"
+  pack "$stage/job.tgz" "python -u train/sweep.py configs.txt --tar \"\$1/sweep.tgz\"" \
+    pipeline train data/finetune/*.json data/finetune/*.jsonl.gz models/sweep -C "$stage" configs.txt
+  colab_start
+}
+on_tick() {
+  echo "$(date +%T) $(grep -a -e '^===' -e FAILED -e 'dev host' "$stage/job.log" | tail -n 1)"
+  pull
+}
+on_lost() { echo "done so far: $(ls models/sweep | tr '\n' ' ')"; }
+on_failed() { :; }
+on_done() {
+  pull
+  colab stop -s "$session"
+  echo "done: models/sweep ($(ls models/sweep | tr '\n' ' ')), log $stage/job.log"
 }
 
 [ -n "$WATCH" ] || start
-restarts=0
-fails=0
-while true; do
-  sleep 300
-  # file downloads work even when the kernel is busy, unlike exec
-  if timeout 300 colab download -s "$session" /content/job.log "$stage/job.log" > /dev/null 2>&1; then
-    fails=0
-    echo "$(date +%T) $(grep -a -e '^===' -e FAILED -e 'dev host' "$stage/job.log" | tail -n 1)"
-    pull
-  else
-    fails=$((fails + 1))
-    echo "$(date +%T) status failed ($fails)"
-    if [ $fails -ge 3 ] && ! colab sessions 2>&1 | grep -q "$session"; then
-      restarts=$((restarts + 1))
-      [ $restarts -gt 3 ] && { echo "VM lost $restarts times, giving up"; exit 1; }
-      echo "VM lost, restarting ($restarts); done so far: $(ls models/sweep | tr '\n' ' ')"
-      start
-      fails=0
-    fi
-    continue
-  fi
-  if grep -aqx DONE "$stage/job.log"; then
-    pull
-    colab stop -s "$session"
-    echo "done: models/sweep ($(ls models/sweep | tr '\n' ' ')), log $stage/job.log"
-    exit 0
-  fi
-done
+colab_watch

@@ -5,7 +5,8 @@
 set -e
 repo=$(cd "$(dirname "$0")/.." && pwd)
 cd "$repo"
-[ -f "${DATA:-data/finetune}/train.jsonl.gz" ] || { echo "no ${DATA:-data/finetune}/train.jsonl.gz: build it with pipeline/dataset.py"; exit 1; }
+. train/lib.sh
+need_data "${DATA:-data/finetune}"
 export PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}
 exec python -u train/train.py \
   --data "${DATA:-data/finetune}" --out "${OUT:-models/intensifier}" \
