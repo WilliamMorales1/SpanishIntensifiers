@@ -22,7 +22,7 @@ python pipeline/dataset.py data/output/intensifier_data_model_<date>.records.jso
 train/kaggle.sh --model FacebookAI/xlm-roberta-large --batch 8 --lr 2e-5 --epochs 8   # retrain on a Kaggle T4 (colab.sh for Colab)
 ```
 
-Training needs a GPU (~70 min on a T4); prediction runs on a laptop CPU (a few files per minute, 2.2 GB model). The model and the training data are not in the repo (corpus text); see [Fine-tuned tagger](docs/finetune.md).
+Training needs a GPU (~70 min on a T4); prediction runs on a laptop CPU (a few files per minute, 2.2 GB model). The model is on Hugging Face (`Hydragon123/spanish-intensifier-tagger`, private; `predict.py` pulls it by default after `hf auth login`). The training data is not in the repo (corpus text); see [Fine-tuned tagger](docs/finetune.md).
 
 To try it without the corpus, `data/examples/` holds one synthetic interview:
 

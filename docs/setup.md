@@ -39,7 +39,7 @@ uv pip install -r requirements.txt --extra-index-url https://download.pytorch.or
 
 ## Hardware
 
-Training runs on a Kaggle T4 (`train/kaggle.sh`, ~70 min) or Colab (`train/colab.sh`); start either in tmux, they run in the foreground. Inference on a laptop CPU: the example interview takes ~40 s at a 5.6 GB peak, the whole corpus hours (`kaggle.sh` predicts over it after training). The model (`models/intensifier/`, 2.2 GB) is gitignored; `kaggle.sh` keeps the previous one as `models/intensifier.old/`.
+Training runs on a Kaggle T4 (`train/kaggle.sh`, ~70 min) or Colab (`train/colab.sh`); start either in tmux, they run in the foreground. Inference on a laptop CPU: the example interview takes ~40 s at a 5.6 GB peak, the whole corpus hours (`kaggle.sh` predicts over it after training). `predict.py` pulls the model (2.2 GB) from the private Hugging Face repo `Hydragon123/spanish-intensifier-tagger` by default; needs `hf auth login` with access. Locally trained models (`models/intensifier/`) are gitignored; `kaggle.sh` keeps the previous one as `models/intensifier.old/`.
 
 ## Changing dependencies
 

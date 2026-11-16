@@ -138,7 +138,7 @@ python pipeline/predict.py --text data/text --speakers data/speaker_data_ALL_202
 python pipeline/predict.py --text data/text --only MEDE_H01_2_1991m_2007 TCali_H11_01_1996b_2019 --xlsx
 ```
 
-Options: `--model models/intensifier`, `--output data/output/intensifier_data_model_<date>`, `--speakers`, `--drop-invariant`, `--xlsx`, `--csv`, `--batch 32`, `--device`, `--only` (speaker names), `--words` (folder of `word_UPOS_lemma` files instead of `--text`; only the words are used). Columns in [output.md](output.md), plus `Token`. Next to the table it writes `<output>.records.jsonl.gz`, the input of `pipeline/dataset.py`.
+Options: `--model` (Hugging Face repo id or local folder; default `Hydragon123/spanish-intensifier-tagger`, private, pulled into the HF cache before each run, cached copy used offline; `--model models/intensifier` for a freshly trained local model), `--output data/output/intensifier_data_model_<date>`, `--speakers`, `--drop-invariant`, `--xlsx`, `--csv`, `--batch 32`, `--device`, `--only` (speaker names), `--words` (folder of `word_UPOS_lemma` files instead of `--text`; only the words are used). Columns in [output.md](output.md), plus `Token`. Next to the table it writes `<output>.records.jsonl.gz`, the input of `pipeline/dataset.py`.
 
 New transcripts: clean them with `pipeline/clean_transcripts.py` as usual (labels, interviewer turns, minute-10 cut, `normalize_text`), then `--text`. Text not run through it is noisier than the training text.
 

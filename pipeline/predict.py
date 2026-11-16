@@ -57,7 +57,9 @@ def words_from_text(paths):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="models/intensifier")
+    parser.add_argument(
+        "--model", default=m.HUB_MODEL, help=f"Hugging Face repo id or local folder (default {m.HUB_MODEL})"
+    )
     source = parser.add_mutually_exclusive_group()
     source.add_argument(
         "--text", default=None, help="folder of cleaned transcripts (default data/text); Stanza tokenizes"

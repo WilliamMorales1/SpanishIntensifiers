@@ -11,6 +11,8 @@ from torch import nn
 
 from dataset import apply_rule, edit_rule, pointers
 
+HUB_MODEL = "Hydragon123/spanish-intensifier-tagger"
+
 token_heads = ["upos", "lemma", "host"]
 host_heads = ["bound", "adj_type", "form", "lex"]
 unk = "<unk>"
@@ -276,10 +278,20 @@ def save(model, tokenizer, vocab, maps, path, args):
         json.dump({"vocab": vocab, "maps": maps, "args": args}, f, ensure_ascii=False)
 
 
+def fetch(path):
+    """fetch returns a local folder as is, else pulls the Hugging Face repo it names (cached copy offline)."""
+    if os.path.isdir(path):
+        return path
+    from huggingface_hub import snapshot_download
+
+    return snapshot_download(path)
+
+
 def load(path, device="cpu"):
-    """load returns (model, tokenizer, vocab, maps, args) saved by save."""
+    """load returns (model, tokenizer, vocab, maps, args) saved by save, from a folder or a Hugging Face repo id."""
     from transformers import AutoConfig, AutoModel, AutoTokenizer
 
+    path = fetch(path)
     with open(os.path.join(path, "labels.json"), encoding="utf-8") as f:
         meta = json.load(f)
     encoder = AutoModel.from_config(AutoConfig.from_pretrained(path), add_pooling_layer=False)
