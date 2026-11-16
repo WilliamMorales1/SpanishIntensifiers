@@ -26,6 +26,26 @@ Only text marked by a speaker label is removed. Unlabeled questions stay, even w
 | `MEDE_H21_3` docx holds all of `MEDE_H21_2` pasted inside it (8,734 words, its own header says 33:47 and 5,186 words) | cut by hand 2026-11-02 from `data/text`, `stanza_tagged`, `stanza_corrected` and `stanza_parsed` together (originals in `data/duplicates/MEDE_H21_3_pre_slice/`); 919 -> 223 rows. The docx is unchanged, so re-cleaning it brings the copy back. The one parse chunk spanning the cut lost its first 15 tokens; their orphaned dependents hang on the first orphan (*despué*) as root |
 | first 1,120 informant words (~ minute 10; `--start-minute 5` drops 510 instead) | dropped (`--start-minute`, or an exact `--skip-words`), only in files cleaned this run. Minute 10 is where the PRESEEA subject-pronoun (10-20) and attenuation (10-40) guides start, since the opening is the most formal stretch (see [Interview start](#interview-start)); 1,120 = median informant words at the 10:00 stamp in the 190 time-stamped MEDE/TCali files (middle half 952-1,269). One word count for every file because Tunja and Cartagena have no stamps. LAPR (no docx, already cut at 350) cut 770 more by hand on 2026-11-01. Interviews shorter than the cut are left empty, no exemption (`MEDE_H01_1`, 23 min) |
 
+### Text normalization (`normalize_text`, 2026-11-15)
+
+Runs after the cut (so the cut is unchanged), on files cleaned that run, or on all of `data/text` with `--normalize-only`. Goal: the fine-tuned model (`docs/finetune.md`) trains and predicts on clean text. Applied 2026-11-15: 180 of 310 files changed, 2,738 word-level edits. Counts below are firings on that `data/text`.
+
+| Case | Handling | Count |
+| --- | --- | --- |
+| Cartagena page headers (`818 PRESSEA - CARTAGENA NIVEL 2 - EDAD 3`) | line dropped | 20 |
+| Cali file-name tails (`CALI_H12_3-45m`), `[update ...]`, `[document]`, `* *` | dropped | 4, 9, 2 |
+| annotator notes (`**OJO this example goes in the manuscrito`, 3), `[T]`/`[[T] ...]` edit marks (63), `{...)`, `J -`, `h!!` | dropped | 3, 63, 8 |
+| noises (`ruido = "eructo`), laughter (`risas = "..."`, `entre_risas`, *jajaja*, *jejeje*), unintelligible `xxx`/`[xxx]` | a comma, so no intensifier looks adjacent to a host across them (*muy xxx bonito* -> *muy, bonito*) | 4, 202, 150 |
+| printed line numbers (`LAPR_M07`: `143)`, bare `142` next to a marked one) | dropped; only in a file with 20+ `NNN)` | 70 |
+| leftover brackets `[ ] ( ) { }` (mostly lone `)`) | dropped, words kept | 1,096 |
+| `--`, em/en dashes (*muy—bonito*) | space | 72 |
+| closing `'`/`''` of a `"` quote (*"La Unción'*) | `"`; elisions *pa'*, *pal'*, *ta'*, *na'*, *to'*, *po'*, *pue'* kept; lone `'` dropped; `s´` -> *sí*; `!!` -> `!`, `._` -> `.` | 52 |
+| words in capitals for emphasis or verb marking (*YO no QUISIERA que USTED*, *MUY bonito*) | lowercased, sentence-initial capital kept; 105 acronyms (*SENA*, *MIO*, *ICFES*, *CAI*...), roman numerals and their typos (*CAi* -> *CAI*, *EPEses*) kept | 1,604 |
+| words split by a space (*entonce s*, *vece s*, *cuida do*; 117 pairs, mostly MEDE) | joined; restarts that are real word pairs (*ma la*, *va ya*) left alone | 151 |
+| missing accents on whole words that are never another word in the corpus (*tenia*, *tambien*, *comodo*, *despues*; 139 forms) | accent restored, case kept; verb forms like *practico*, *limite*, *publica* left alone | 341 |
+
+Changed files are retagged and reparsed (Colab), so `stanza_*` match the new text. Originals in `data/text_pre_normalize/`.
+
 ### Interview start
 
 The 1,120-word cut is minute 10 of the interview, converted to words from this corpus's own time stamps. Minute 10 is where the PRESEEA guides for subject pronouns and attenuation start; the others start at minute 5 or 0. The first 10 minutes are treated as the most formal stretch (Guerrero González et al. 2024), the observer's paradox of Labov (1972).

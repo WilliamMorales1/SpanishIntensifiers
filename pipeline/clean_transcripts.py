@@ -253,6 +253,156 @@ def remove_text(input_folder, num_words_to_remove, filenames=None):
     print(f"Successfully deleted {num_words_to_remove} words from each file")
 
 
+# normalize_text: transcription noise left after cleaning (headers, annotations, notes, caps marking, missing
+# accents, split words); runs after the minute-10 cut so the cut stays the same
+pause, gap = "\x01", "\x02"
+drop_lines = re.compile(
+    r"(?m)^[ \t]*(?:\d* ?PRESSEA - CARTAGENA(?: \d+)?(?: NIVEL \d - EDAD \d)?|NIVEL \d - EDAD \d)[ \t]*\n?"
+)
+# Cali file tails, annotator notes and edit marks, dropped with no trace
+drop_spans = re.compile(
+    r"CALI_H\d+_\d+-\d+m?|\[update [^\]\n]*\]|\[document\d*\]|\*(?: \*)+"
+    r"|\*\*OJO this example goes in the manuscrito|\*OJO\*bel siempre es el futuridad pero los otros-no \)"
+    r"|\)OJO si fuese vayamos en vez de vamoiis -futuro sii,|\[\[T\][^\]\n]*\]|\[T\]"
+    r"|\{[^)}\n]*\)|(?<!\w)J -(?=\w)|(?<=\n)h!!|^h!!|(?<=eructo\n)\" (?=perdón)"
+)
+# noises, laughter and unintelligible stretches become a pause so no intensifier looks adjacent to a host across them
+pause_spans = re.compile(
+    r"ruido\s?=\s?[\"“][^\s,]*|risas\s?=\s?[\"“][^\"”\n]*[\"”]|entre_risas|ruido_fondo"
+    r"|(?<=días )risas(?= no)|\[x{2,}\]|\bx{2,}\b|\b(?:[jJ]a){2,}\w*|\b(?:[jJ]e){2,}\w*"
+)
+# LAPR_M07 kept the printed line numbers ("143) nota el acento", bare "142" too)
+line_number = re.compile(r"(?<![\w,.])(\d{3})\)?(?![\w,.])")
+elisions = {"pa", "pal", "ta", "na", "to", "po", "pue"}
+quote_end = re.compile(rf"(?<=[\w.])''?(?=[\s,.?!\]\"”{pause}{gap}]|$)", re.MULTILINE)
+acronyms = set(
+    "UPTC ICFES ICFEX IFCES ACODESAR INEM RCN EPS UPB CBI IV II CEFA TLC CD ICETEX SURA BMW DVD EPM VIH ELN ISO VAR"  # noqa: SIM905
+    " CODASÉ DANE IDERBOL IDERB SAO ONU INTERCOL TELECOM GIESCAH COMFAMA CPU RAM JAL INDER POT MIO MIOS UNIVALLE "
+    "SIJIN BBC SISBEN QTH SOAT FAR ANAPO ESAP ASIMED HL CCNA CCN UNITEP OEA UPAC MOIR APROCARIBE WTN DADIS DADI MTV"
+    " INURBE CEAC ITM AKT USB SISPAC MIT HACEB GEA EAFIT FCECEP ASAFI EPOC FDI NASA PIB ARL CIAT RPG DIAN ICA IP "
+    "FARC RH TTB XLR CSI IMVIMA SENA CAI CAM TAC ACPM ID SEU UPS PM EP EMI CAP SAI EPE".split()
+)
+# unaccented spellings that are never another word in the corpus (verb forms like "practico", "limite" left alone)
+accented = (  # noqa: SIM905
+    "acá además ahí alegría algún allá allí anatomía aquí área así bolívar cáncer carácter cédula clínica cómodo "
+    "cría décimo demás después día difícil enfermería estómago fácil germán guanábana inglés jamás línea lío maíz "
+    "maría méxico mía míos número odontólogo ojalá país parís perdón política pólvora prácticamente próximo quizá "
+    "raíz religión república retén román sábado sazón también tía todavía tráfico aburrí apareció aprendí árboles "
+    "atreví ayudándole bogotá caímos chévere chéveres cogí cogía cogió conocí contó corría crecí decidió déjalo "
+    "acuéstese háblale ángeles días díaz diré diría dólares dormí empecé empezaría encontró éramos estábamos estén "
+    "estrés exámenes gustaría había habían habrá imagínese josé manteníamos meléndez menú metí mías moniquirá "
+    "muchísimo nací odontólogos oíste pasábamos pérez ponía poníamos prendió quedábamos quería reímos sabría salí "
+    "seguí subí subía sumercé tendría teníamos tías últimas veían venían viví vivían volví tenía salió mostró cayó "
+    "reír"
+).split()
+plain = str.maketrans("áéíóú", "aeiou")
+accent_fixes = {w.translate(plain): w for w in accented}
+# words the transcribers split with a space (MEDE mostly); restarts that are real word pairs ("ma la", "va ya") left out
+text_splits = (  # noqa: SIM905
+    "entonce s|má s|vece s|cuida do|coci na|coci nar|desayu no|calma do|amista des|amista d|pe ro|especia l|"
+    "acostumbra mos|camina r|porqu e|dor mir|fuert e|reciclad ores|homosexual es|señal es|mol estaba|pu nticos|"
+    "cua dra|interesa nte|propone r|u vas|u no|eso s|me s|mi s|su s|lo s|l os|ca sa|ca ma|vi da|ve r|ve z|hi ja|"
+    "ra to|men os|i r|s i|pa ra|llev a|alegrí a|alg o|algú n|almorza r|amanece r|auxilia r|añ o|baila r|bie n|"
+    "borda r|bu lla|cambia r|ciuda dana|cla ro|come r|comi da|costos o|cuest a|cumplea ños|dichos o|dieci ocho|"
+    "distin ta|distin to|dormi da|enviga do|escoba r|escucha r|esta r|estu dio|estudia r|fi nca|genera l|go rdo|"
+    "gra nde|hace r|inglé s|ingenie ro|jubila do|labo r|lee r|lle va|madr e|materia l|mayo r|more no|much o|muert o|"
+    "muje r|person al|po rque|prepara da|prácticament e|respira r|rega lo|rega la|rosa rio|ruidos o|tam bién|"
+    "terro r|tor o|trota r|ubicació n|universida d|vicios o|vivie nda|peli negro|dad a|con migo|veinti cuatro|"
+    "veinti siete|cuatro cientos|la s(?!\\.)"
+).split("|")
+split_word = re.compile(r"(?<!\w)(?i:" + "|".join(s.replace(" ", " +") for s in text_splits) + r")(?!\w)")
+caps_word = re.compile(r"[A-ZÁÉÍÓÚÑÜ]{2,}[a-záéíóúñü]*")
+roman = re.compile(r"(?=[XVI]{2})X*(?:IX|IV|V?I{0,3})")
+
+
+def _same_case(old, new):
+    return new[0].upper() + new[1:] if old[0].isupper() else new
+
+
+def _acronym(word):
+    # "CAi", "EPEses": an acronym with a typo or a spoken plural
+    return word.upper() in acronyms or re.match(r"[A-ZÁÉÍÓÚÑÜ]+", word)[0] in acronyms
+
+
+def _lower_caps(text):
+    """_lower_caps lowercases words written in capitals for emphasis or verb marking, keeping acronyms."""
+    words = list(re.finditer(r"[^\W\d_]+", text))
+    low = [bool(caps_word.fullmatch(m[0])) and not _acronym(m[0]) and not roman.fullmatch(m[0]) for m in words]
+    # single letters inside a capitalized run ("VOY A EXPLICAR", "Y YO")
+    for k, m in enumerate(words):
+        if len(m[0]) == 1 and m[0].isupper() and ((k and low[k - 1]) or (k + 1 < len(words) and low[k + 1])):
+            low[k] = True
+    out, pos = [], 0
+    for m, lo in zip(words, low):
+        if not lo:
+            continue
+        word = m[0].lower()
+        before = text[max(0, m.start() - 20) : m.start()].rstrip(" \t¿¡\"“'(")
+        if (not before and m.start() <= 20) or before.endswith(("\n", ".", "!", "?")):
+            word = word[0].upper() + word[1:]
+        out += [text[pos : m.start()], word]
+        pos = m.end()
+    out.append(text[pos:])
+    return "".join(out)
+
+
+def _resolve_marks(text):
+    text = re.sub(rf"[ \t]*(?:[,{pause}{gap}][ \t]*)*{pause}(?:[ \t]*[,{pause}{gap}])*[ \t]*", pause, text)
+    text = re.sub(rf"[ \t]*{gap}[ \t{gap}]*", gap, text)
+    text = re.sub(rf"(?m)^[{pause}{gap}]+|[{pause}{gap}]+$", "", text)
+    text = re.sub(rf"[{pause}{gap}]+(?=[,.?!;])", "", text)
+    text = re.sub(rf"(?<=[¿¡“(])[{pause}{gap}]+", "", text)
+    text = re.sub(rf"(?<=[.?!;:])[{pause}{gap}]+", " ", text)
+    return text.replace(pause, ", ").replace(gap, " ")
+
+
+def normalize_text(text):
+    """normalize_text removes transcription noise the docx cleaning leaves and restores spellings of whole words."""
+    text = drop_lines.sub("", text)
+    text = drop_spans.sub(gap, text)
+    text = pause_spans.sub(pause, text)
+    if len(re.findall(r"\b\d{3}\)", text)) >= 20:
+        marked = {int(n) for n in re.findall(r"\b(\d{3})\)", text)}
+        text = line_number.sub(
+            lambda m: gap if m[0].endswith(")") or {int(m[1]) - 1, int(m[1]) + 1} & marked else m[0], text
+        )
+    text = re.sub(r"[\[\](){}]", gap, text)
+    text = text.replace(".--???", ".").replace("!!", "!").replace("._", ".").replace("'�", '"')
+    text = re.sub(r"-{2,}|[—–]", gap, text)
+    text = quote_end.sub(lambda m: m[0] if _word_before(text, m.start()).lower() in elisions else '"', text)
+    text = re.sub(r"(?<=\s)'(?=\s|$)", gap, text, flags=re.MULTILINE)
+    text = re.sub(r"\bs´", "sí", text)
+    text = _resolve_marks(text)
+    text = re.sub(r"\b(CA|SA)i\b", lambda m: m[0].upper(), _lower_caps(text))
+    text = split_word.sub(lambda m: _same_case(m[0], re.sub(r" +", "", m[0].lower())), text)
+    return re.sub(
+        r"(?<!\w)[^\W\d_]+(?!\w)",
+        lambda m: _same_case(m[0], accent_fixes[m[0].lower()]) if m[0].lower() in accent_fixes else m[0],
+        text,
+    )
+
+
+def _word_before(text, end):
+    return re.search(r"[^\W\d_]*$", text[max(0, end - 30) : end])[0]
+
+
+def normalize_folder(folder, filenames=None):
+    """normalize_folder applies normalize_text in place and returns the names of the files it changed."""
+    changed = []
+    for filename in sorted(filenames if filenames is not None else os.listdir(folder)):
+        if not filename.endswith(".txt"):
+            continue
+        path = os.path.join(folder, filename)
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        if (new := normalize_text(text)) != text:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(new)
+            changed.append(filename)
+    print(f"Normalized {len(changed)} files")
+    return changed
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default="data/original", help="folder of .docx transcripts")
@@ -265,8 +415,15 @@ if __name__ == "__main__":
         help="interview minute analysis starts at, as informant words dropped (5: 510, 10: 1,120)",
     )
     parser.add_argument("--skip-words", type=int, help="leading informant words dropped; overrides --start-minute")
+    parser.add_argument(
+        "--normalize-only", action="store_true", help="only normalize the texts already in --output (no docx, no cut)"
+    )
     args = parser.parse_args()
-    written = clean_data(args.input, args.output)
-    skip = start_words[args.start_minute] if args.skip_words is None else args.skip_words
-    if skip:
-        remove_text(args.output, skip, written)
+    if args.normalize_only:
+        normalize_folder(args.output)
+    else:
+        written = clean_data(args.input, args.output)
+        skip = start_words[args.start_minute] if args.skip_words is None else args.skip_words
+        if skip:
+            remove_text(args.output, skip, written)
+        normalize_folder(args.output, written)

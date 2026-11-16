@@ -1,7 +1,7 @@
 import pytest
 from docx import Document
 
-from clean_transcripts import clean_data, remove_interviewer, remove_text
+from clean_transcripts import clean_data, normalize_folder, normalize_text, remove_interviewer, remove_text
 
 
 def write_docx(path, paragraphs):
@@ -250,3 +250,96 @@ def test_cli_start_minute(tmp_path, args, kept):
     subprocess.run([sys.executable, script, "--input", src, "--output", out, *args], check=True, capture_output=True)
 
     assert len((out / "05_speaker.txt").read_text(encoding="utf-8").split()) == kept
+
+
+@pytest.mark.parametrize(
+    ("text", "clean"),
+    [
+        ("818 PRESSEA - CARTAGENA NIVEL 2 - EDAD 3\nEsos son, ya", "Esos son, ya"),
+        ("y era muy bonito CALI_H12_3-45m", "y era muy bonito"),
+        ("eso era [update 2020] muy bueno", "eso era muy bueno"),
+        ("eso [T] era muy bueno", "eso era muy bueno"),
+        ("eso [[T] algo] era muy bueno", "eso era muy bueno"),
+        ("profetas,**OJO this example goes in the manuscrito y ya", "profetas, y ya"),
+        ("y J -pues sí", "y pues sí"),
+        ("era muy—bonito", "era muy bonito"),
+        ("era muy -- bonito", "era muy bonito"),
+        ("sí!! claro._ ya", "sí! claro. ya"),
+    ],
+)
+def test_normalize_drops_notes_and_marks(text, clean):
+    assert normalize_text(text) == clean
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "era muy ruido =“eructo bonito",
+        'era muy risas = "jaja" bonito',
+        "era muy xxx bonito",
+        "era muy [xxx] bonito",
+        "era muy jajaja bonito",
+    ],
+)
+def test_normalize_noise_becomes_pause(text):
+    # a pause keeps "muy" from looking adjacent to the host past the noise
+    assert normalize_text(text) == "era muy, bonito"
+
+
+def test_normalize_line_numbers():
+    text = "\n".join(f"{n}) dijo 300 cosas" for n in range(100, 125)) + "\n125 suelto\n999 años"
+
+    lines = normalize_text(text).split("\n")
+
+    assert lines[0] == "dijo 300 cosas"
+    assert lines[-2:] == ["suelto", "999 años"]
+
+
+@pytest.mark.parametrize(
+    ("text", "clean"),
+    [
+        ("en la iglesia \"La Unción' Sí", 'en la iglesia "La Unción" Sí'),
+        ("vamos pa' allá", "vamos pa' allá"),
+        ("dijo ' no", "dijo no"),
+        ("s´ señor", "sí señor"),
+    ],
+)
+def test_normalize_quotes(text, clean):
+    assert normalize_text(text) == clean
+
+
+@pytest.mark.parametrize(
+    ("text", "clean"),
+    [
+        ("YO no QUISIERA que USTED se FUERA", "Yo no quisiera que usted se fuera"),
+        ("VOY A EXPLICAR", "Voy a explicar"),
+        ("eso. MUY bonito", "eso. Muy bonito"),
+        ("fui al SENA y al MIO", "fui al SENA y al MIO"),
+        ("el siglo XX y el CAi", "el siglo XX y el CAI"),
+    ],
+)
+def test_normalize_lowercases_caps_keeps_acronyms(text, clean):
+    assert normalize_text(text) == clean
+
+
+@pytest.mark.parametrize(
+    ("text", "clean"),
+    [
+        ("la vece s que fui entonce s", "la veces que fui entonces"),
+        ("Entonce s fui", "Entonces fui"),
+        ("la s. ma la va ya", "la s. ma la va ya"),
+        ("es fácil y tenia tambien comodo", "es fácil y tenía también cómodo"),
+        ("Tambien fui", "También fui"),
+        ("yo practico y limite", "yo practico y limite"),
+    ],
+)
+def test_normalize_splits_and_accents(text, clean):
+    assert normalize_text(text) == clean
+
+
+def test_normalize_folder_returns_changed(tmp_path):
+    (tmp_path / "a.txt").write_text("MUY bonito", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("muy bonito", encoding="utf-8")
+
+    assert normalize_folder(tmp_path) == ["a.txt"]
+    assert (tmp_path / "a.txt").read_text(encoding="utf-8") == "Muy bonito"

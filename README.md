@@ -52,6 +52,7 @@ Check every class against your own reading before using `Int_type` in a model. T
 - [Pipeline](docs/pipeline.md): inputs, stages, flags, dialects, Colab.
 - [Output](docs/output.md): columns and reading the SQLite file.
 - [Rules](docs/rules.md): every cleaning, correction and extraction rule.
+- [Fine-tuned tagger](docs/finetune.md): one model trained on the rule output, run without tagging, corrections or parse.
 
 ## License
 

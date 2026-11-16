@@ -1,6 +1,7 @@
 # scores an output table's adjective rows against a hand-labelled sample
 
 import argparse
+import json
 import sqlite3
 
 import pandas as pd
@@ -27,12 +28,22 @@ def score(gold, output):
     }
 
 
+def in_split(gold, splits_path, split="test"):
+    """in_split keeps the gold rows of speakers in one split, so a fine-tuned model is scored only on unseen files."""
+    with open(splits_path, encoding="utf-8") as f:
+        return gold[gold["Speaker"].isin(json.load(f)[split])]
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("output", help="intensifier_data_*.sqlite")
     parser.add_argument("--gold", required=True, help="hand-labelled sample (tsv)")
+    parser.add_argument("--splits", help="splits.json from pipeline/silver.py: score only the gold rows of --split")
+    parser.add_argument("--split", default="test")
     args = parser.parse_args()
     gold = pd.read_csv(args.gold, sep="\t", keep_default_na=False)
+    if args.splits:
+        gold = in_split(gold, args.splits, args.split)
     output = pd.read_sql("SELECT * FROM intensifier_data", sqlite3.connect(args.output))
     counts = score(gold, output)
     for name, n in counts.items():

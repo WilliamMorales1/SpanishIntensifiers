@@ -633,9 +633,12 @@ def _modifier(words, i, degree, relations=None):
     return get_int(words[k]), double
 
 
-def process_segment(segment, speaker, parse=None, degree=None):
+def process_segment(segment, speaker, parse=None, degree=None, hosts=None):
     """process_segment extracts host rows; parse and degree, when given, hold a Relations and a degree_types label per word."""
     rows = []
+    # hosts, when given, gets each row's word index (silver labels for the fine-tuned model)
+    if hosts is None:
+        hosts = []
 
     intensifier = None
     adjective = None
@@ -719,6 +722,7 @@ def process_segment(segment, speaker, parse=None, degree=None):
             }
             add_verb(row_data, parse[i] if parse else None, words)
             rows.append(row_data)
+            hosts.append(i)
 
         # IF NON-INT ADV
         if is_adv(word) and not is_fragment(words, i):
@@ -761,6 +765,7 @@ def process_segment(segment, speaker, parse=None, degree=None):
             }
             add_verb(row_data, parse[i] if parse else None, words)
             rows.append(row_data)
+            hosts.append(i)
     return rows
 
 
@@ -838,6 +843,23 @@ def fix_isimo_hosts(df):
     return df
 
 
+def file_segments(tokens, parse=None, filename="", join=True):
+    """file_segments splits a file's tagged tokens into Phr segments, returning (tokens, parse, [(segment, token index per word)])."""
+    if parse is not None and len(parse) != len(tokens):
+        raise ValueError(f"{filename}: parse has {len(parse)} tokens, tags have {len(tokens)}")
+    if join:
+        tokens, parse = join_splits(tokens, parse)
+    content = " ".join(tokens)
+    starts = [m.start() for m in re.finditer(r"\S+", content)]
+    out, offset = [], 0
+    for segment in re.split(r"(?<=[,.!?]_PUNCT_[,.!?])", content):
+        # the split can fall inside a token ("..._PUNCT_..."), so map by character offset
+        index = [bisect.bisect_right(starts, offset + m.start()) - 1 for m in re.finditer(r"\S+", segment)]
+        offset += len(segment)
+        out.append((segment, index))
+    return tokens, parse, out
+
+
 def analyze(input_path, output_filename=None, parses=None, drop_invariant=False):
     """analyze extracts every file in input_path; parses maps a filename to one Relations or None per token."""
     # Create a list to store data frames
@@ -862,26 +884,12 @@ def analyze(input_path, output_filename=None, parses=None, drop_invariant=False)
             content = content.replace("\n", " ")
 
             parse = parses(filename) if parses else None
-            tokens = content.split()
-            if parse is not None and len(parse) != len(tokens):
-                raise ValueError(f"{filename}: parse has {len(parse)} tokens, tags have {len(tokens)}")
-            tokens, parse = join_splits(tokens, parse)
-            content = " ".join(tokens)
-
-            # Split the content into segments based on custom sentence-ending punctuation
-            segments = re.split(r"(?<=[,.!?]_PUNCT_[,.!?])", content)
-            starts = [m.start() for m in re.finditer(r"\S+", content)]
-
+            tokens, parse, segments = file_segments(content.split(), parse, filename)
             # tan cansada , que no sé: the result clause can lie past the segment's comma
-            degree = degree_types(retag(content.split()))
+            degree = degree_types(retag(tokens))
 
-            # Process each segment
-            offset = 0
-            for segment in segments:
-                # the split can fall inside a token ("..._PUNCT_..."), so map by character offset
-                index = [bisect.bisect_right(starts, offset + m.start()) - 1 for m in re.finditer(r"\S+", segment)]
+            for segment, index in segments:
                 seg_parse = [parse[k] for k in index] if parse is not None else None
-                offset += len(segment)
                 seg_rows = process_segment(segment, speaker, seg_parse, [degree[k] for k in index])
                 rows.extend(seg_rows)
 

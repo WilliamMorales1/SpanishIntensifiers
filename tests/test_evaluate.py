@@ -34,3 +34,14 @@ def test_score_counts_right_wrong_ambiguous_and_non_adj():
         "wrong": 1,
         "left ambiguous": 1,
     }
+
+
+def test_in_split_keeps_only_that_split(tmp_path):
+    import json
+
+    from evaluate import in_split
+
+    path = tmp_path / "splits.json"
+    path.write_text(json.dumps({"train": ["a"], "dev": [], "test": ["b"]}))
+    gold = pd.DataFrame({"Speaker": ["a", "b", "b"], "Phr": ["x", "y", "z"]})
+    assert in_split(gold, path)["Phr"].tolist() == ["y", "z"]
