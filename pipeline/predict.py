@@ -12,6 +12,7 @@ import torch
 
 import model as m
 from dataset import clean_words, decode_rows, row_cols, word_segments
+from int_type import add_int_type, load_map
 from output import drop_invariant_hosts, write_outputs
 
 
@@ -69,6 +70,7 @@ def main():
     parser.add_argument("--output", default="data/output/intensifier_data_model_" + date.today().isoformat())
     parser.add_argument("--speakers", help="speaker metadata sheet (xlsx with a Speaker column)")
     parser.add_argument("--drop-invariant", action="store_true")
+    parser.add_argument("--int-type", help="Int -> Int_type JSON map (default pipeline/int_type.json)")
     parser.add_argument("--xlsx", action="store_true")
     parser.add_argument("--csv", action="store_true")
     parser.add_argument("--batch", type=int, default=32)
@@ -95,6 +97,7 @@ def main():
     frames = [decode_rows(p, maps, token=True) for p in preds]
     df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=row_cols + ["Token"])
     print(f"{len(df)} rows, {(df['Int'] != '/').sum()} intensified", flush=True)
+    df = add_int_type(df, load_map(args.int_type))
     if args.drop_invariant:
         df = drop_invariant_hosts(df)
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)

@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 import pandas as pd
 
 row_cols = [
-    "Speaker", "Phr_tagged", "Phr", "Double", "Int", "Int_type", "Adv", "Adj", "Lex_Adj", "Adj_type", "Noun",
+    "Speaker", "Phr_tagged", "Phr", "Double", "Int", "Adv", "Adj", "Lex_Adj", "Adj_type", "Noun",
     "Negation", "Verb", "Inf_Verb",
 ]  # fmt: skip
 # per-host labels; pointers hold a token index in the file, -1 for none
@@ -130,7 +130,7 @@ def word_segments(words):
 
 
 def build_maps(records):
-    """build_maps learns Int and Double from the intensifier word (mas -> más, menos -> más o menos) and Int_type from Int."""
+    """build_maps learns Int and Double from the intensifier word (mas -> más, menos -> más o menos)."""
     ints, doubles = defaultdict(Counter), defaultdict(Counter)
     for rec, df in records:
         hosts = [k for k, h in enumerate(rec["host"]) if h != "O"]
@@ -139,14 +139,10 @@ def build_maps(records):
                 ints[rec["words"][rec["int"][k]].lower()][row["Int"]] += 1
             if rec["double"][k] >= 0:
                 doubles[rec["words"][rec["double"][k]].lower()][row["Double"]] += 1
-    types = {}
-    for _, df in records:
-        types.update({i: t for i, t in zip(df["Int"], df["Int_type"]) if i != "/"})
     return {
         "int": {w: c.most_common(1)[0][0] for w, c in ints.items()},
         # a double menos is just menos (más o menos bien), unlike the Int menos
         "double": {w: c.most_common(1)[0][0] for w, c in doubles.items()},
-        "int_type": types,
     }
 
 
@@ -182,7 +178,6 @@ def decode_rows(rec, maps, token=False):
                     "Phr": phrase,
                     "Double": word(rec["double"][k], "double"),
                     "Int": intensifier,
-                    "Int_type": maps["int_type"].get(intensifier, "/"),
                     "Adv": "/" if adj else form,
                     "Adj": form if adj else "/",
                     "Lex_Adj": apply_rule(low, rec["lex"][k]) if adj else "/",
@@ -418,20 +413,21 @@ def merge(dataset, records, rows, split="train"):
     replaced and keeps its split; a new file goes to split. Returns (records per split, maps, problems).
     """
     by_split = {s: [] for s in ("train", "dev", "test")}
-    maps = {"int": {}, "double": {}, "int_type": {}}
+    maps = {"int": {}, "double": {}}
     if os.path.exists(os.path.join(dataset, "maps.json")):
         for s in by_split:
             path = os.path.join(dataset, f"{s}.jsonl.gz")
             by_split[s] = read_records(path) if os.path.exists(path) else []
         with open(os.path.join(dataset, "maps.json"), encoding="utf-8") as f:
             maps = json.load(f)
+        # Int_type moved to pipeline/int_type.py; older datasets still carry it
+        maps.pop("int_type", None)
     old_split = {r["speaker"]: s for s, recs in by_split.items() for r in recs}
     rows = rows.copy()
     rows["Int"] = rows["Int"].str.lower()
     # an intensifier word the maps have never seen stands for itself
     for col, table in (("Int", "int"), ("Double", "double")):
         maps[table] = {w: w for w in rows[col] if w != "/"} | maps[table]
-    maps["int_type"].update({i: t for i, t in zip(rows["Int"], rows["Int_type"]) if i != "/"})
     problems = []
     for rec in records:
         problems += [

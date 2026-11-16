@@ -78,7 +78,6 @@ def _demo():
     maps = {
         "int": {"muy": "muy", "tan": "tan", "bien": "bien"},
         "double": {"menos": "menos"},
-        "int_type": {"muy": "booster", "tan": "booster", "bien": "booster", "-ísimo": "booster"},
     }
     return rec, maps
 
@@ -101,7 +100,8 @@ def test_decode_rows():
     )  # fmt: skip
     assert (first["Verb"], first["Inf_Verb"]) == ("es", "ser")
     assert df.iloc[1][["Adv", "Negation", "Int"]].tolist() == ["lejos", "no", "tan"]
-    assert df.iloc[2][["Adj", "Int", "Int_type"]].tolist() == ["rico", "-ísimo", "booster"]
+    assert df.iloc[2][["Adj", "Int"]].tolist() == ["rico", "-ísimo"]
+    assert "Int_type" not in df
     assert df.iloc[3][["Double", "Int", "Adj_type"]].tolist() == ["menos", "bien", "ambiguous"]
 
 
@@ -122,7 +122,7 @@ def test_apply_rows_corrections():
     rec, maps = _demo()
     rows = decode_rows(rec, maps, token=True).astype(str)
     rows = rows[rows["Adj"] != "rico"].copy()  # not a host
-    rows.loc[rows["Adj"] == "bonita", ["Int", "Int_type", "Adj_type"]] = ["/", "/", "attributive"]
+    rows.loc[rows["Adj"] == "bonita", ["Int", "Adj_type"]] = ["/", "attributive"]
     rows.loc[rows["Adv"] == "lejos", "Negation"] = "/"
     added = rows.iloc[0].copy()
     added[["Adj", "Lex_Adj", "Token", "Int", "Noun", "Verb", "Inf_Verb"]] = ["casa", "caso", "", "/", "/", "/", "/"]
@@ -162,13 +162,13 @@ def test_merge_keeps_splits_and_adds_new_files(tmp_path):
     write_dataset(str(tmp_path), old, maps)
     new = dict(copy.deepcopy(rec), speaker="NEW_H01")
     rows = decode_rows(rec, maps, token=True).astype(str)
-    rows = pd.concat([rows, rows.assign(Speaker="NEW_H01", Int="harto", Int_type="booster")])
+    rows = pd.concat([rows, rows.assign(Speaker="NEW_H01", Int="harto")])
     by_split, merged, problems = merge(str(tmp_path), [_cleared(rec), _cleared(new)], rows)
     assert problems == []
     assert [r["speaker"] for r in by_split["test"]] == ["DEMO_M45"] and by_split["test"][0] == rec
     assert [r["speaker"] for r in by_split["train"]] == ["NEW_H01"]
     # harto is not before any host there, so it is a bound Int
-    assert merged["int_type"]["harto"] == "booster" and merged["int"]["muy"] == "muy"
+    assert merged["int"]["harto"] == "harto" and merged["int"]["muy"] == "muy" and "int_type" not in merged
     write_dataset(str(tmp_path), by_split, merged)
     assert read_records(str(tmp_path / "test.jsonl.gz")) == [rec]
 
@@ -255,7 +255,7 @@ def test_clean_words_joins_splits():
 def test_double_menos_keeps_its_word():
     rec = {"words": ["más", "o", "menos", "bien", "bueno"], "host": ["O", "O", "O", "O", "ADJ"], "int": [-1] * 5}
     rec["double"] = [-1] * 4 + [2]
-    df = pd.DataFrame([{"Int": "bien", "Double": "menos", "Int_type": "booster"}])
+    df = pd.DataFrame([{"Int": "bien", "Double": "menos"}])
     rec["int"][4] = 3
     maps = build_maps([(rec, df)])
     assert maps["double"] == {"menos": "menos"} and "menos" not in maps["int"]

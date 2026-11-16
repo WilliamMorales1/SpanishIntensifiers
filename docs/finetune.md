@@ -1,6 +1,6 @@
 # Fine-tuned intensifier tagger
 
-One transformer model that reads plain words of a cleaned transcript and outputs one row per host adjective or adverb: its intensifier, `Int_type`, `Adj_type`, `Noun`, `Verb`, `Negation` and lemmas (columns in [output.md](output.md), conventions in [annotation.md](annotation.md)). No tagger, rules or parse at inference.
+One transformer model that reads plain words of a cleaned transcript and outputs one row per host adjective or adverb: its intensifier, `Adj_type`, `Noun`, `Verb`, `Negation` and lemmas (columns in [output.md](output.md), conventions in [annotation.md](annotation.md)). No tagger, rules or parse at inference. `Int_type` is not a model output: `predict.py` adds it from `Int` afterwards ([annotation.md](annotation.md#int_type)).
 
 The first training set was the output of an earlier rule pipeline, mapped onto token positions, with 542 hand-fixed rows. From here on the training data grows by hand: run the latest model, correct its rows, merge them in, retrain ([the correction loop](#the-correction-loop)).
 
@@ -35,7 +35,7 @@ Per host word:
 
 Training text is `data/text` after `normalize_text` ([cleaning.md](cleaning.md#text-normalization-normalize_text-2026-11-15)): no headers, annotator notes, `[T]` marks, brackets, laughter or `xxx` (now pauses), emphasis capitals, split words or missing accents on unambiguous words. Input words get one more cleaning step: `clean_words` rejoins transcript splits from `split_words` (*distin to*, *lejo s*, *muy bue no*). Everything else (tags, lemmas, segments) comes from the words.
 
-`Int` and `Double` are the intensifier words mapped through `maps.json` (*mas* -> *más*; an `Int` *menos* is *más o menos*, a `Double` *menos* stays *menos*), and `Int_type` is looked up from `Int`; both live in `maps.json` of the dataset, and new intensifiers in corrected tables are added to them. `Inf_Verb` is the predicted lemma of the verb word.
+`Int` and `Double` are the intensifier words mapped through `maps.json` (*mas* -> *más*; an `Int` *menos* is *más o menos*, a `Double` *menos* stays *menos*); both maps live in `maps.json` of the dataset, and new intensifiers in corrected tables are added to them. `Inf_Verb` is the predicted lemma of the verb word.
 
 ## 1. The training data
 
@@ -59,7 +59,7 @@ A record holds `words`, `upos`, `lemma` (edit rules), `seg` and per host word `b
    - add a missed host as a new row with `Token` blank and `Speaker`, `Phr`, and `Adj` or `Adv` filled: it is matched by `Phr` (punctuation ignored) and the word or its lemma (*rico* finds *riquísimo*);
    - `Int`, `Double`, `Noun`, `Negation`, `Verb` must be words of the host's `Phr`, before the host for `Int`, `Double`, `Negation`; an `Int` not in the segment is a bound intensifier (`-ísimo`, `súper`, `archi`);
    - fixing a tag in `Phr_tagged` (`word_UPOS_lemma`, same token count) fixes the record's UPOS and lemma.
-   - speaker metadata, `Number` and `Syllable` are ignored (rebuilt on output); `Int_type` of a new intensifier is read from the table into `maps.json`.
+   - speaker metadata, `Number` and `Syllable` are ignored (rebuilt on output), and so is `Int_type` (from `pipeline/int_type.json`; add a new intensifier there).
 4. Merge into the dataset:
 
    ```fish

@@ -23,7 +23,7 @@ Kept: *por/a lo menos* X (host bare), *más o menos* X (compromiser), negated ho
 | `Lex_Adj` | masculine singular lemma of an adjective host (*bonitas* -> *bonito*, *acogedora* -> *acogedor*, invariant *egoísta*, *feliz*) |
 | `Int` | intensifier word next to the host (*muy*, *bien*, *tan*), or the bound one (`-ísimo`, `súper`, `re`, `archi`), or `/` |
 | `Double` | a second intensifier before it (*muy muy*, *bien bien*), or `/` |
-| `Int_type` | from `Int`, table below |
+| `Int_type` | filled from `Int` by `pipeline/int_type.py`, table below; not learned, so corrections here are ignored |
 | `Adj_type` | `attributive` (modifies a noun: *una casa muy bonita*), `predicative` (copula, *quedar*, *ponerse*, secondary predicates: *es muy bonita*, *se puso feo*, *lo veo bonito*, *veía eso todo raro*), `ambiguous` (no head in the segment: *muy normal .*, fillers); `/` on adverb rows |
 | `Noun` | noun the adjective modifies (attributive) or its subject/object (predicative), only if it is in `Phr`, else `/` |
 | `Negation` | *no*, *nunca*, *ni*, *tampoco*, *jamás* in a preverbal slot scoping over the host (*no es muy bueno*, *ni tan pobres*); not discourse *no* (*no , muy buena*) |
@@ -33,7 +33,7 @@ A *mucho* after a lexical verb belongs to the verb, not the host (*compartimos m
 
 ## Int_type
 
-Quirk et al. (1985:589-590) as operationalized by Stratton & Sundquist (2022:388-389) and Stratton (2020). Emphasizers are not scalar and "did not count as an instance of intensification" (Stratton & Sundquist 2022:395): their rows keep `Int` but count as unintensified. The mapping lives in `maps.json` (`int_type`) of the dataset and is updated from corrected tables, so a new intensifier needs its `Int_type` filled once.
+Quirk et al. (1985:589-590) as operationalized by Stratton & Sundquist (2022:388-389) and Stratton (2020). Emphasizers are not scalar and "did not count as an instance of intensification" (Stratton & Sundquist 2022:395): their rows keep `Int` but count as unintensified. The mapping is `pipeline/int_type.json`, applied after the model by `predict.py`; an `Int` missing from it gets `?`. Another classification is another JSON file: `python pipeline/int_type.py <table> --map mine.json` refills an existing table, no retraining.
 
 | Int_type | Int |
 | --- | --- |

@@ -7,7 +7,7 @@
 | `Speaker` | transcript file name |
 | `Phr_tagged`, `Phr` | the segment the token came from, tagged (`word_UPOS_lemma` per token; `_` inside a word becomes `-`) and plain |
 | `Int` | intensifier (*muy*, *tan*, *súper*, *-ísimo*, *re-*, *archi-*, *más o menos*, ...) or `/` |
-| `Int_type` | `maximizer`, `booster`, `approximator`, `compromiser` or `emphasizer` (Quirk et al. 1985 via Stratton & Sundquist 2022; see [annotation.md](annotation.md#int_type)), or `/`. Emphasizers count as unintensified in Stratton's method |
+| `Int_type` | `maximizer`, `booster`, `approximator`, `compromiser` or `emphasizer` (Quirk et al. 1985 via Stratton & Sundquist 2022; see [annotation.md](annotation.md#int_type)), `/`, or `?` for an `Int` missing from the map (`pipeline/int_type.json`, swappable with `predict.py --int-type` or `pipeline/int_type.py`). Emphasizers count as unintensified in Stratton's method |
 | `Double` | second intensifier (*muy muy*) or `/` |
 | `Adj`, `Lex_Adj` | adjective host as written, and its masculine singular lemma |
 | `Adv` | adverb host |

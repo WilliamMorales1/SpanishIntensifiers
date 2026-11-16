@@ -35,7 +35,7 @@ python pipeline/predict.py --text data/examples/text --speakers data/examples/sp
 
 | path | contents |
 | --- | --- |
-| `pipeline/` | `clean_transcripts.py` (docx -> `data/text`), `model.py` and `predict.py` (inference), `dataset.py` (label records, corrected-table merge, scoring), `output.py` (table writers) |
+| `pipeline/` | `clean_transcripts.py` (docx -> `data/text`), `model.py` and `predict.py` (inference), `dataset.py` (label records, corrected-table merge, scoring), `int_type.py` and `int_type.json` (post-model `Int_type`), `output.py` (table writers) |
 | `train/` | `train.py` and the Kaggle/Colab runners and sweeps |
 | `tests/` | pytest suite |
 | `data/` (gitignored, corpus text) | `original/` docx, `text/` cleaned text, `finetune/` training data, `eval/`, `output/` model tables |
@@ -56,7 +56,7 @@ The classification is partly arbitrary. The scale was written for English, and t
 - *más o menos* is a compromiser, after Quirk's *more or less*.
 - Which uses of *tan* and *más* count as intensifiers is a judgment call: comparatives, *tan X como*, *tan X que* result clauses and 'how' readings are dropped. Earlier Spanish work dropped *tan* and *más* entirely (Brown & Cortés-Torres 2013; Orozco, Morales & Valenzuela 2026).
 
-Check every class against your own reading before using `Int_type` in a model. The mapping is `int_type` in the dataset's `maps.json`, read from corrected tables; the classes and references are in [docs/annotation.md](docs/annotation.md#int_type).
+Check every class against your own reading before using `Int_type` in a model. The model does not predict `Int_type`: `predict.py` looks it up from `Int` in `pipeline/int_type.json` after the model runs. To use another classification, write your own map and run `python pipeline/int_type.py <table> --map mine.json` (sqlite, xlsx or csv); no retraining. The classes and references are in [docs/annotation.md](docs/annotation.md#int_type).
 
 ## Docs
 
