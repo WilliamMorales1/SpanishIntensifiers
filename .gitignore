@@ -1,10 +1,9 @@
-data/
-output/
+data/*
+!data/examples/
+data/examples/*.sqlite
 models/
 __pycache__/
 .pytest_cache/
-AGENTS.md
 .venv/
 *.egg-info/
 build/
-examples/*.sqlite

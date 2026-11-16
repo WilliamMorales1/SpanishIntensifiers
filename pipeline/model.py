@@ -4,14 +4,12 @@
 import json
 import math
 import os
-import sys
 from collections import Counter
 
 import torch
 from torch import nn
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "pipeline"))
-from silver import apply_rule, edit_rule, pointers
+from dataset import apply_rule, edit_rule, pointers
 
 token_heads = ["upos", "lemma", "host"]
 host_heads = ["bound", "adj_type", "form", "lex"]
@@ -112,7 +110,7 @@ def chunks(rec, max_len, context=64):
 
 
 def lost_pointers(rec, windows):
-    """lost_pointers counts silver pointer targets outside their host's window (the model cannot learn those)."""
+    """lost_pointers counts pointer targets outside their host's window (the model cannot learn those)."""
     lost = 0
     for cs, s, e, ce in windows:
         for k in range(s, e):
@@ -295,7 +293,7 @@ def load(path, device="cpu"):
 
 @torch.no_grad()
 def predict_records(model, tokenizer, vocab, records, max_len, context=64, batch_size=32, device="cpu"):
-    """predict_records labels every word of each record (words and seg needed) and returns records like silver.file_labels."""
+    """predict_records labels every word of each record (words and seg needed) and returns records in the data/finetune format."""
     jobs = []
     preds = []
     for r, rec in enumerate(records):

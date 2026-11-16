@@ -1,10 +1,10 @@
 #!/bin/bash
-# sweep.sh on Kaggle instead of Colab: uploads the job as a private dataset, runs scripts/finetune/kaggle_job.py as a
+# sweep.sh on Kaggle instead of Colab: uploads the job as a private dataset, runs train/kaggle_job.py as a
 # private GPU kernel (T4 x2, one config per GPU) and copies each finished config's metrics into models/sweep/<name>/.
 # Configs already in models/sweep are skipped. Start it in tmux; WATCH=1 only follows a kernel already pushed.
-# usage: scripts/finetune/kaggle_sweep.sh configs.txt
+# usage: train/kaggle_sweep.sh configs.txt
 set -e
-repo=$(cd "$(dirname "$0")/../.." && pwd)
+repo=$(cd "$(dirname "$0")/.." && pwd)
 configs=$(realpath "$1")
 stage=$repo/data/kaggle_sweep
 user=$(kaggle config view | sed -n 's/^- username: //p')
@@ -15,7 +15,7 @@ cd "$repo"
 
 push() {
   cp "$configs" "$stage/configs.txt"
-  tar czf "$stage/data/job.tgz" pipeline scripts/finetune data/finetune/*.json data/finetune/*.jsonl.gz models/sweep \
+  tar czf "$stage/data/job.tgz" pipeline train data/finetune/*.json data/finetune/*.jsonl.gz models/sweep \
     -C "$stage" configs.txt
   cat > "$stage/data/dataset-metadata.json" <<JSON
 {"title": "intensifier-sweep-data", "id": "$data", "licenses": [{"name": "unknown"}]}
@@ -26,7 +26,7 @@ JSON
     kaggle datasets create -p "$stage/data" -q
   fi
   until kaggle datasets status "$data" 2>/dev/null | grep -q ready; do sleep 20; done
-  cp scripts/finetune/kaggle_job.py "$stage/kernel/"
+  cp train/kaggle_job.py "$stage/kernel/"
   cat > "$stage/kernel/kernel-metadata.json" <<JSON
 {"id": "$kernel", "title": "intensifier-sweep", "code_file": "kaggle_job.py", "language": "python",
  "kernel_type": "script", "is_private": true, "enable_gpu": true, "enable_internet": true,

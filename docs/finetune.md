@@ -1,21 +1,22 @@
 # Fine-tuned intensifier tagger
 
-One transformer model that reads plain words and outputs the same rows as `pipeline/run.py`: host adjectives and adverbs, their intensifier, `Int_type`, `Adj_type`, `Noun`, `Verb`, `Negation` and lemmas. At inference it needs no Stanza tagging, no `correct_tokens`, no `retag`, no dialect modules and no dependency parse.
+One transformer model that reads plain words of a cleaned transcript and outputs one row per host adjective or adverb: its intensifier, `Int_type`, `Adj_type`, `Noun`, `Verb`, `Negation` and lemmas (columns in [output.md](output.md), conventions in [annotation.md](annotation.md)). No tagger, rules or parse at inference.
 
-The model is trained on **silver labels**: the current rule pipeline's output mapped back onto token positions, with the hand labels of the retired dev set (`data/eval/retired/`) written over the rules where they disagree. It learns to imitate the rules, so it is at best about as good as they are, plus whatever it generalizes. Its use is to replace the scaffolding for new transcripts (no GPU parse, no new rules per dialect); check it against `evaluate.py` before you trust it more than the rules.
+The first training set was the output of an earlier rule pipeline, mapped onto token positions, with 542 hand-fixed rows. From here on the training data grows by hand: run the latest model, correct its rows, merge them in, retrain ([the correction loop](#the-correction-loop)).
 
 ## Files
 
 | file | what it does |
 |---|---|
-| `pipeline/silver.py` | builds the training data from `data/stanza_corrected` + `data/stanza_parsed`; `decode_rows` turns per-token labels (silver or predicted) back into rows; `compare_rows` scores rows against rows |
-| `scripts/finetune/model.py` | the model: encoder + heads, chunking, save/load, `predict_records` |
-| `scripts/finetune/train.py` | training loop, dev score per epoch, keeps the best epoch, test score |
-| `scripts/finetune/predict.py` | runs a trained model over a folder and writes the sqlite (csv/xlsx) table |
-| `scripts/finetune/colab.sh` | does all of the above on a Colab GPU and downloads the results |
-| `scripts/finetune/sweep.sh` | trains a list of configs (`name args...` per line) one after another on one Colab GPU and keeps each `metrics.json` in `models/sweep/<name>/`; finished configs are skipped on rerun, `WATCH=1` only follows a running job |
-| `scripts/finetune/kaggle.sh`, `kaggle_train.py` | `colab.sh` on a Kaggle T4: private dataset + private script kernel, downloads model and sqlite when the kernel completes |
-| `scripts/finetune/kaggle_sweep.sh`, `kaggle_job.py` | `sweep.sh` on Kaggle, one config per T4 of the T4 x2 |
+| `pipeline/clean_transcripts.py` | docx -> `data/text` ([cleaning.md](cleaning.md)) |
+| `pipeline/dataset.py` | the training data: per-token label records, `decode_rows` (labels -> rows), `apply_rows` (corrected rows -> labels), `merge` (into `data/finetune/`), `compare_rows` (scores rows against rows) |
+| `pipeline/output.py` | speaker metadata merge, `Number`/`Syllable`, `--drop-invariant`, sqlite/csv/xlsx writers |
+| `pipeline/model.py` | the model: encoder + heads, chunking, save/load, `predict_records` |
+| `train/train.py` | training loop, dev score per epoch, keeps the best epoch, test score |
+| `pipeline/predict.py` | runs a trained model over a folder; writes the table and the label records |
+| `train/colab.sh` | trains and predicts on a Colab GPU and downloads the results |
+| `train/kaggle.sh`, `kaggle_train.py` | the same on a Kaggle T4: private dataset + private script kernel |
+| `train/sweep.sh`, `kaggle_sweep.sh`, `kaggle_job.py` | train a list of configs (`name args...` per line) and keep each `metrics.json` in `models/sweep/<name>/`; finished configs are skipped on rerun, `WATCH=1` only follows a running job. Kaggle runs one config per T4 of the T4 x2 |
 
 ## What the model predicts
 
@@ -32,22 +33,43 @@ Per host word:
 - `form`, `lex`: edit rules from the word to `Adj`/`Adv` and `Lex_Adj` (this is how *-ísimo* bases, -dora lemmas and PR lateralized lemmas are learned); a host word seen in training as the same host class takes its most common training rule (dev wrong `Lex_Adj` 99 -> 86).
 - pointers to the word that is its intensifier, double intensifier, negator, noun and verb, or to nothing. A pointer can only land in the host's own Phr segment (the text between `,` `.` `!` `?`), as in the rules.
 
-Training text is `data/text` after `normalize_text` (`docs/rules.md`, Text normalization): no headers, annotator notes, `[T]` marks, brackets, laughter or `xxx` (now pauses), emphasis capitals, split words or missing accents on unambiguous words. Input words still get one cleaning step, the same the rules do: `clean_words` rejoins transcript splits from `split_words` (*distin to*, *lejo s*, *muy bue no*). Everything else (tags, lemmas, segments) comes from the words.
+Training text is `data/text` after `normalize_text` ([cleaning.md](cleaning.md#text-normalization-normalize_text-2026-11-15)): no headers, annotator notes, `[T]` marks, brackets, laughter or `xxx` (now pauses), emphasis capitals, split words or missing accents on unambiguous words. Input words get one more cleaning step: `clean_words` rejoins transcript splits from `split_words` (*distin to*, *lejo s*, *muy bue no*). Everything else (tags, lemmas, segments) comes from the words.
 
-`Int` and `Double` are the intensifier words mapped through `maps.json` (*mas* -> *más*; an `Int` *menos* is *más o menos*, a `Double` *menos* stays *menos*), and `Int_type` is looked up from `Int`; both maps are learned from the silver rows. `Inf_Verb` is the predicted lemma of the verb word.
+`Int` and `Double` are the intensifier words mapped through `maps.json` (*mas* -> *más*; an `Int` *menos* is *más o menos*, a `Double` *menos* stays *menos*), and `Int_type` is looked up from `Int`; both live in `maps.json` of the dataset, and new intensifiers in corrected tables are added to them. `Inf_Verb` is the predicted lemma of the verb word.
 
-## 1. Build the silver data (local, ~1 min)
+## 1. The training data
 
-```fish
-conda activate intensifier-research
-python pipeline/silver.py
-```
+`data/finetune/` (gitignored, corpus text): `{train,dev,test}.jsonl.gz` (one label record per speaker file), `maps.json` and `splits.json`. Splits are by speaker file, stratified by corpus (MEDE, TCali, TUNJ, CTG, TrCTG, LAPR, and the numbered Cartagena files as `CTG-num`): 245 train, 32 dev, 32 test (`split_speakers`, seed 13). Keep dev and test fixed so scores stay comparable across rounds; add new files to train.
 
-Writes `data/finetune/{train,dev,test}.jsonl.gz`, `maps.json` and `splits.json` (gitignored, corpus text). Splits are by speaker file, stratified by corpus (MEDE, TCali, TUNJ, CTG, TrCTG, LAPR, and the numbered Cartagena files `22-Inés...` as one group `CTG-num`): 245 train, 32 dev, 32 test with seed 13; every corpus is in every split. Options: `--corrected`, `--parsed`, `--out`, `--dev 0.1`, `--test 0.1`, `--seed 13`, `--fixes` (hand labels in `evaluate.py` format, default the retired dev set; `none` to skip; refuses `adj_gold.tsv`).
+A record holds `words`, `upos`, `lemma` (edit rules), `seg` and per host word `bound`, `adj_type`, `form`, `lex`, `int`, `double`, `neg`, `noun`, `verb` (pointers are word indices, -1 for none).
 
-Hand fixes: 542 of the 549 retired dev rows are found (commas are dropped before matching, as `write_outputs` drops them); 27 hosts that are not really adjectives lose their host label and 49 `Adj_type` labels change.
+## The correction loop
 
-It prints a round-trip check: the silver labels decoded back into rows must equal the rule rows. Current result: 86,187 rows (after the hand fixes), 32 cells differ of ~1.2 M (`Inf_Verb` 30, `Verb` 2). The rules take the verb from the parse, which calls some words verbs that the corrected tags do not (*como* -> *comer*, *trabajo* -> *trabajar*, *dizque* -> *dizcar*) or capitalizes differently; the model gives the corrected lemma and the token's spelling, which is what we want. Rerun it after any rule change, since the model learns whatever the rules output.
+1. Clean new transcripts (`python pipeline/clean_transcripts.py`), or pick files of `data/text` whose rows need fixing.
+2. Run the latest model with `--xlsx` (or `--csv`):
+
+   ```fish
+   python pipeline/predict.py --text data/text --only <speakers> --output data/output/round2 --xlsx
+   ```
+
+   Writes `data/output/round2.{sqlite,xlsx}` and `data/output/round2.records.jsonl.gz` (the words and tokenization the rows point into).
+3. Correct the table by hand ([annotation.md](annotation.md)):
+   - fix any cell of a row; keep its `Token` (word index in the file) so it is matched to its word;
+   - delete a row that is not a host;
+   - add a missed host as a new row with `Token` blank and `Speaker`, `Phr`, and `Adj` or `Adv` filled: it is matched by `Phr` (punctuation ignored) and the word or its lemma (*rico* finds *riquísimo*);
+   - `Int`, `Double`, `Noun`, `Negation`, `Verb` must be words of the host's `Phr`, before the host for `Int`, `Double`, `Negation`; an `Int` not in the segment is a bound intensifier (`-ísimo`, `súper`, `archi`);
+   - fixing a tag in `Phr_tagged` (`word_UPOS_lemma`, same token count) fixes the record's UPOS and lemma.
+   - speaker metadata, `Number` and `Syllable` are ignored (rebuilt on output); `Int_type` of a new intensifier is read from the table into `maps.json`.
+4. Merge into the dataset:
+
+   ```fish
+   python pipeline/dataset.py data/output/round2.records.jsonl.gz data/output/round2.xlsx
+   ```
+
+   Every table speaker found in the records replaces its file in the dataset, keeping that file's split; new files go to `--split` (default `train`). Options: `--dataset data/finetune` (made if missing). It prints the problems it found (`host not found`, `two rows on one host`, `<column> not found`) with speaker and row; fix those rows and rerun, since the merge rewrites the files each time.
+5. Retrain (next section), compare `metrics.json` with the previous model, repeat.
+
+A whole file counts as checked once merged: rows left uncorrected are taken as right, so correct every row of a file, not a sample.
 
 ## 2. Train on Colab (~30-60 min on a T4)
 
@@ -55,25 +77,25 @@ Needs the `colab` CLI authenticated (see the `colab` skill) and no other GPU ses
 
 ```fish
 mkdir -p data/colab_finetune
-tmux new -d -s intensifier-ft -c (pwd) 'conda run --no-capture-output -n intensifier-research scripts/finetune/colab.sh > data/colab_finetune/run.log 2>&1'
+tmux new -d -s intensifier-ft -c (pwd) 'conda run --no-capture-output -n intensifier-research train/colab.sh > data/colab_finetune/run.log 2>&1'
 tail -f data/colab_finetune/run.log
 ```
 
-`colab.sh` builds the silver data if missing, packs `pipeline/`, `scripts/finetune/`, `data/finetune/` and `data/stanza_corrected/` into `data/colab_finetune/job.tgz`, opens a fresh session (`COLAB_SESSION`, default `intensifier-ft`; `COLAB_GPU`, default `T4`), trains, runs `predict.py` over `data/stanza_corrected`, then downloads and unpacks:
+`colab.sh` needs `data/finetune/train.jsonl.gz`, packs `pipeline/`, `train/`, `data/finetune/` and `data/text/` into `data/colab_finetune/job.tgz`, opens a fresh session (`COLAB_SESSION`, default `intensifier-ft`; `COLAB_GPU`, default `T4`), trains, runs `predict.py` over `data/text`, then downloads and unpacks:
 
 - `models/intensifier/`: `model.pt`, encoder config, tokenizer, `labels.json` (label vocabularies, maps, training args), `metrics.json` (dev scores per epoch, test scores).
-- `output/intensifier_data_model_<date>.sqlite`.
+- `data/output/intensifier_data_model_<date>.sqlite`.
 
 It polls every 5 min. As soon as training ends it downloads the model into `models/intensifier/` on this machine (a previous model is moved to `models/intensifier.old/`), before prediction starts, so a failed predict or a lost VM does not lose it. It replaces a VM preempted during training up to 3 times (training restarts from scratch); a VM lost after training ends the script, and `predict.py` can then run locally. It stops the VM when done, and on a failed job leaves it running and saves `data/colab_finetune/job.log`. Arguments are passed to `train.py`:
 
 ```fish
-scripts/finetune/colab.sh --epochs 6 --lr 2e-5
+train/colab.sh --epochs 6 --lr 2e-5
 ```
 
 On Kaggle instead (needs the `kaggle` CLI with a phone-verified account; dataset and kernel stay private):
 
 ```fish
-tmux new -d -s intensifier-ft -c (pwd) 'conda run --no-capture-output -n intensifier-research scripts/finetune/kaggle.sh --model FacebookAI/xlm-roberta-large --batch 8 --lr 2e-5 --epochs 8 > data/kaggle_finetune.log 2>&1'
+tmux new -d -s intensifier-ft -c (pwd) 'conda run --no-capture-output -n intensifier-research train/kaggle.sh --model FacebookAI/xlm-roberta-large --batch 8 --lr 2e-5 --epochs 8 > data/kaggle_finetune.log 2>&1'
 ```
 
 It uploads the same tarball as dataset `<user>/intensifier-ft-data`, runs `kaggle_train.py` as kernel `<user>/intensifier-ft` (train, then predict), polls every 5 min and, once the kernel is COMPLETE, unpacks `models/intensifier/` (old one to `models/intensifier.old/`) and the sqlite. Kaggle returns output only after the run ends, so a failed predict means rerunning `predict.py` locally from the downloaded model. `WATCH=1` follows a kernel already pushed. `kaggle_sweep.sh data/finetune/exp/configs.txt` runs a config list the same way (`models/sweep/<name>/` skipped on rerun).
@@ -96,14 +118,14 @@ The labels are very unbalanced (train split, per word or per host row):
 | adj_type | attributive | 45.8% (predicative 35.5, ambiguous 18.7) | 45.2% | 37.1% |
 | noun pointer | none | 77% | | |
 
-So a per-column accuracy of 95% on `Double`, `Negation` or `Int` says almost nothing. `compare_rows` reports, next to each column's accuracy, the always-majority accuracy (`majority`) and Cohen's kappa (`kappa`: accuracy above what guessing by each side's label frequencies gets, 0 = chance, 1 = perfect); P/R/F1 of the rows where `Double`, `Negation`, `Noun` and `Verb` have a value (`filled`); `Adj_type` macro F1 over the three classes; the share of adjective rows intensified, rules vs model (`adj_intensified_rate`, the study's main number); and row F1 and that share per corpus (`by_corpus`), since corpora differ in size (MEDE 37% of files, CTG 12%) and rate (MEDE ~24% vs CTG ~9%).
+So a per-column accuracy of 95% on `Double`, `Negation` or `Int` says almost nothing. `compare_rows` reports, next to each column's accuracy, the always-majority accuracy (`majority`) and Cohen's kappa (`kappa`: accuracy above what guessing by each side's label frequencies gets, 0 = chance, 1 = perfect); P/R/F1 of the rows where `Double`, `Negation`, `Noun` and `Verb` have a value (`filled`); `Adj_type` macro F1 over the three classes; the share of adjective rows intensified, gold vs model (`adj_intensified_rate`, the study's main number); and row F1 and that share per corpus (`by_corpus`), since corpora differ in size (MEDE 37% of files, CTG 12%) and rate (MEDE ~24% vs CTG ~9%).
 
 The loss stays plain, unweighted cross-entropy. Class weights or focal loss raise recall of rare classes by making the model predict them more often than they occur, which would push `adj_intensified_rate` up: a biased rate is worse here than a few missed rare cases. A pretrained encoder learns 6% hosts and 10% intensified hosts without help, and the rare bound intensifiers are also covered by the lemma/form rules. No input normalization is needed: the encoder is cased and accent-aware, and spelling variants (*mas*/*más*) are mapped at decoding. If a run shows a calibrated rate but low recall on `Double` or `bound`, try weights only on those heads.
 
 Training on this laptop's CPU is not practical for the base model (days). A smoke test with a tiny random model checks the code in a few minutes:
 
 ```fish
-python scripts/finetune/train.py --model hf-internal-testing/tiny-random-RobertaModel --limit 2 --epochs 1 --batch 8 --out /tmp/tiny --device cpu
+python train/train.py --model hf-internal-testing/tiny-random-RobertaModel --limit 2 --epochs 1 --batch 8 --out /tmp/tiny --device cpu
 ```
 
 ## 3. Predict
@@ -111,26 +133,20 @@ python scripts/finetune/train.py --model hf-internal-testing/tiny-random-Roberta
 On Colab `colab.sh` already did it. Locally (CPU works for inference, slowly; ~1.5 M words take hours, a few files minutes):
 
 ```fish
-# words of already-tokenized files (tags ignored)
-python scripts/finetune/predict.py --words data/stanza_corrected --speakers data/speaker_data_ALL_2026-3-12.xlsx
-# raw transcripts: Stanza's tokenizer only (no tagger, no parse)
-python scripts/finetune/predict.py --text data/text --only MEDE_H01_2_1991m_2007 TCali_H11_01_1996b_2019
+# cleaned transcripts: Stanza's tokenizer only (no tagger, no parse)
+python pipeline/predict.py --text data/text --speakers data/speaker_data_ALL_2026-3-12.xlsx
+python pipeline/predict.py --text data/text --only MEDE_H01_2_1991m_2007 TCali_H11_01_1996b_2019 --xlsx
 ```
 
-Options: `--model models/intensifier`, `--output output/intensifier_data_model_<date>`, `--speakers`, `--drop-invariant`, `--xlsx`, `--csv`, `--batch 32`, `--device`, `--only` (speaker names). Same columns as `pipeline/run.py` (`docs/output.md`).
+Options: `--model models/intensifier`, `--output data/output/intensifier_data_model_<date>`, `--speakers`, `--drop-invariant`, `--xlsx`, `--csv`, `--batch 32`, `--device`, `--only` (speaker names), `--words` (folder of `word_UPOS_lemma` files instead of `--text`; only the words are used). Columns in [output.md](output.md), plus `Token`. Next to the table it writes `<output>.records.jsonl.gz`, the input of `pipeline/dataset.py`.
 
 New transcripts: clean them with `pipeline/clean_transcripts.py` as usual (labels, interviewer turns, minute-10 cut, `normalize_text`), then `--text`. Text not run through it is noisier than the training text.
 
 ## 4. Evaluate
 
-- `models/intensifier/metrics.json`: dev and test scores against the rule rows (host P/R/F1, intensified-row P/R/F1, intensifier word, per-column accuracy with majority baseline and kappa, filled-column F1, `Adj_type` macro F1, intensified rate, per corpus, row F1). Test files were never trained on or used to pick the epoch.
-- Against the hand-labelled gold set, only on the test files (51 of the 500 gold rows), so the model never saw them:
+`models/intensifier/metrics.json`: dev and test scores against the dataset rows (host P/R/F1, intensified-row P/R/F1, intensifier word, per-column accuracy with majority baseline and kappa, filled-column F1, `Adj_type` macro F1, intensified rate, per corpus, row F1). Test files are never trained on or used to pick the epoch. Hand-corrected dev and test files make these scores gold scores; until then they are scores against the old rule output.
 
-  ```fish
-  python pipeline/evaluate.py output/intensifier_data_model_<date>.sqlite --gold data/eval/adj_gold.tsv --splits data/finetune/splits.json
-  ```
-
-  Score the rules' sqlite the same way to compare. Without `--splits` the score covers training files and is optimistic. Never train on `adj_gold.tsv` or pick settings by it.
+`data/eval/adj_gold.tsv` (500 hand-labelled ADJ rows) is a test set only: never merge its files' corrections into train or pick settings by it.
 
 ## Results
 
@@ -150,7 +166,6 @@ Rules on the same gold rows: 94.3% (33 of 35). Corpus output: 87,884 rows, 8,582
 
 ## Limits
 
-- Mostly silver: outside the 542 hand-fixed rows, rule errors are learned as targets (secondary predicates as `amod`, the ~6% confidently wrong `Adj_type`).
-- Segments come from punctuation tokens only, as in the rules. Windows hold whole segments up to 382 subwords plus 64 subwords of context per side; a longer unpunctuated stretch is cut, and a pointer can reach into the context. `train.py` prints how many silver pointer targets still fall outside their window (0 on the corpus).
+- The first training set is mostly rule output: outside the 542 hand-fixed rows, rule errors are learned as targets (secondary predicates as `amod`, the ~6% confidently wrong `Adj_type`). Corrected files replace them round by round.
+- Segments come from punctuation tokens only. Windows hold whole segments up to 382 subwords plus 64 subwords of context per side; a longer unpunctuated stretch is cut, and a pointer can reach into the context. `train.py` prints how many pointer targets still fall outside their window (0 on the corpus).
 - The test-split gold check has 51 rows: a wide interval.
-- Changing the rules means rebuilding the silver data and retraining.

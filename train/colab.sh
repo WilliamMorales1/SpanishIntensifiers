@@ -1,35 +1,35 @@
 #!/bin/bash
-# trains the intensifier tagger on a Colab GPU, runs it over data/stanza_corrected, downloads the model into
-# models/intensifier (as soon as training ends, before predict) and the table into output/, then stops the VM.
+# trains the intensifier tagger on a Colab GPU, runs it over data/text, downloads the model into
+# models/intensifier (as soon as training ends, before predict) and the table into data/output/, then stops the VM.
 # Extra arguments go to train.py.
 # Runs in the foreground for ~30-60 min: start it in tmux. A lost VM is replaced up to 3 times (training restarts).
 set -e
-repo=$(cd "$(dirname "$0")/../.." && pwd)
+repo=$(cd "$(dirname "$0")/.." && pwd)
 stage=$repo/data/colab_finetune
 session=${COLAB_SESSION:-intensifier-ft}
 gpu=${COLAB_GPU:-T4}
-out=output/intensifier_data_model_$(date +%F)
+out=data/output/intensifier_data_model_$(date +%F)
 mkdir -p "$stage"
 cd "$repo"
-[ -f data/finetune/train.jsonl.gz ] || python pipeline/silver.py
-tar czf "$stage/job.tgz" pipeline scripts/finetune data/finetune data/stanza_corrected
+[ -f data/finetune/train.jsonl.gz ] || { echo "no data/finetune/train.jsonl.gz: build it with pipeline/dataset.py"; exit 1; }
+tar czf "$stage/job.tgz" pipeline train data/finetune data/text
 
 # printf with no arguments would emit '' as an empty argument
 train_args=
 [ $# -gt 0 ] && train_args=$(printf '%q ' "$@")
 cat > "$stage/job.sh" <<SH
 cd /content/proj
-python -u scripts/finetune/train.py --out models/intensifier $train_args || { echo FAILED; touch /content/FAILED; exit 1; }
+python -u train/train.py --out models/intensifier $train_args || { echo FAILED; touch /content/FAILED; exit 1; }
 tar czf /content/model.tgz models/intensifier && touch /content/TRAINED
-python -u scripts/finetune/predict.py --model models/intensifier --words data/stanza_corrected --output $out || { echo FAILED; touch /content/FAILED; exit 1; }
-tar czf /content/results.tgz output
+python -u pipeline/predict.py --model models/intensifier --text data/text --output $out || { echo FAILED; touch /content/FAILED; exit 1; }
+tar czf /content/results.tgz data/output
 echo DONE
 touch /content/DONE
 SH
 cat > "$stage/setup_vm.py" <<'PY'
 import subprocess
 cmd = """cd /content && mkdir -p proj && tar xzf job.tgz -C proj
-python -c 'from huggingface_hub import snapshot_download as s; s("bertin-project/bertin-roberta-base-spanish")'
+pip install -q stanza==1.15.0
 nohup bash job.sh > job.log 2>&1 &"""
 print(subprocess.run(cmd, shell=True, capture_output=True, text=True, executable="/bin/bash").stdout[-500:])
 PY

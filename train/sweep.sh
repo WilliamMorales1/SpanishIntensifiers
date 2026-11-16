@@ -2,9 +2,9 @@
 # trains several train.py configs one after another on one Colab GPU and keeps only their metrics.json
 # (models/sweep/<name>/), to pick settings on the dev split. Configs come from a file of "name args..." lines.
 # Finished configs are skipped, so rerunning after a lost VM resumes. Start it in tmux.
-# usage: scripts/finetune/sweep.sh configs.txt; WATCH=1 only follows a job already running in the session
+# usage: train/sweep.sh configs.txt; WATCH=1 only follows a job already running in the session
 set -e
-repo=$(cd "$(dirname "$0")/../.." && pwd)
+repo=$(cd "$(dirname "$0")/.." && pwd)
 configs=$(realpath "$1")
 stage=$repo/data/colab_sweep
 session=${COLAB_SESSION:-intensifier-sweep}
@@ -14,7 +14,7 @@ cd "$repo"
 
 pack() {
   cp "$configs" "$stage/configs.txt"
-  tar czf "$stage/job.tgz" pipeline scripts/finetune data/finetune/*.json data/finetune/*.jsonl.gz models/sweep
+  tar czf "$stage/job.tgz" pipeline train data/finetune/*.json data/finetune/*.jsonl.gz models/sweep
   cat > "$stage/job.sh" <<'SH'
 cd /content/proj
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -23,7 +23,7 @@ while read -r name args; do
   [[ $name == \#* ]] && continue
   [ -f "models/sweep/$name/metrics.json" ] && continue
   echo "=== $name $args"
-  if python -u scripts/finetune/train.py --out "tmp/$name" $args; then
+  if python -u train/train.py --out "tmp/$name" $args; then
     mkdir -p "models/sweep/$name"
     cp "tmp/$name/metrics.json" "tmp/$name/labels.json" "models/sweep/$name/"
   else

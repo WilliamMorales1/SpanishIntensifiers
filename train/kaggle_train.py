@@ -1,5 +1,5 @@
 # Kaggle kernel body for kaggle.sh: trains with the arguments in train_args.txt, then runs predict.py over
-# data/stanza_corrected; /kaggle/working gets model.tgz, output/ and job.log.
+# data/text; /kaggle/working gets model.tgz, output/ (from data/output) and job.log.
 import glob
 import os
 import shlex
@@ -33,22 +33,23 @@ def run(cmd):
         sys.exit(1)
 
 
-run(["python", "-u", "scripts/finetune/train.py", "--out", "models/intensifier", *train_args])
+run(["python", "-u", "train/train.py", "--out", "models/intensifier", *train_args])
 with tarfile.open(f"{work}/model.tgz", "w:gz") as t:
     t.add("models/intensifier")
 print("TRAINED", flush=True)
+run(["pip", "install", "-q", "stanza==1.15.0"])
 run(
     [
         "python",
         "-u",
-        "scripts/finetune/predict.py",
+        "pipeline/predict.py",
         "--model",
         "models/intensifier",
-        "--words",
-        "data/stanza_corrected",
+        "--text",
+        "data/text",
         "--output",
         out,
     ]
 )
-shutil.copytree("output", f"{work}/output", dirs_exist_ok=True)
+shutil.copytree("data/output", f"{work}/output", dirs_exist_ok=True)
 print("DONE", flush=True)

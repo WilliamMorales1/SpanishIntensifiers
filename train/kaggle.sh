@@ -1,9 +1,9 @@
 #!/bin/bash
 # colab.sh on Kaggle: trains on a Kaggle T4 (private dataset + private kernel), runs the model over
-# data/stanza_corrected and downloads models/intensifier (old one kept as models/intensifier.old) and output/.
+# data/text and downloads models/intensifier (old one kept as models/intensifier.old) and data/output/.
 # Extra arguments go to train.py. Runs ~1 h in the foreground: start it in tmux. WATCH=1 follows a pushed kernel.
 set -e
-repo=$(cd "$(dirname "$0")/../.." && pwd)
+repo=$(cd "$(dirname "$0")/.." && pwd)
 stage=$repo/data/kaggle_finetune
 user=$(kaggle config view | sed -n 's/^- username: //p')
 data=$user/intensifier-ft-data
@@ -12,10 +12,10 @@ mkdir -p "$stage/data" "$stage/kernel"
 cd "$repo"
 
 push() {
-  [ -f data/finetune/train.jsonl.gz ] || python pipeline/silver.py
+  [ -f data/finetune/train.jsonl.gz ] || { echo "no data/finetune/train.jsonl.gz: build it with pipeline/dataset.py"; exit 1; }
   : > "$stage/train_args.txt"; [ $# -gt 0 ] && printf '%q ' "$@" > "$stage/train_args.txt"
-  echo "output/intensifier_data_model_$(date +%F)" > "$stage/out_name.txt"
-  tar czf "$stage/data/job.tgz" pipeline scripts/finetune data/finetune data/stanza_corrected \
+  echo "data/output/intensifier_data_model_$(date +%F)" > "$stage/out_name.txt"
+  tar czf "$stage/data/job.tgz" pipeline train data/finetune data/text \
     -C "$stage" train_args.txt out_name.txt
   cat > "$stage/data/dataset-metadata.json" <<JSON
 {"title": "intensifier-ft-data", "id": "$data", "licenses": [{"name": "unknown"}]}
@@ -26,7 +26,7 @@ JSON
     kaggle datasets create -p "$stage/data" -q
   fi
   until kaggle datasets status "$data" 2>/dev/null | grep -q ready; do sleep 20; done
-  cp scripts/finetune/kaggle_train.py "$stage/kernel/"
+  cp train/kaggle_train.py "$stage/kernel/"
   cat > "$stage/kernel/kernel-metadata.json" <<JSON
 {"id": "$kernel", "title": "intensifier-ft", "code_file": "kaggle_train.py", "language": "python",
  "kernel_type": "script", "is_private": true, "enable_gpu": true, "enable_internet": true,
@@ -52,5 +52,5 @@ if [ -d models/intensifier ]; then
   mv models/intensifier models/intensifier.old
 fi
 tar xzf "$stage/out/model.tgz" -C "$repo"
-[ -d "$stage/out/output" ] && cp -r "$stage/out/output/." output/
+[ -d "$stage/out/output" ] && mkdir -p data/output && cp -r "$stage/out/output/." data/output/
 echo "done ($s): models/intensifier ($(du -sh models/intensifier | cut -f1)), output $(cat "$stage/out_name.txt").sqlite, log $stage/out/job.log"

@@ -1,4 +1,4 @@
-# fine-tunes IntensifierTagger on the silver data from pipeline/silver.py; GPU (Colab T4) for real runs, CPU for smoke tests
+# fine-tunes IntensifierTagger on data/finetune (pipeline/dataset.py); GPU (Colab T4) for real runs, CPU for smoke tests
 
 import argparse
 import gzip
@@ -11,10 +11,9 @@ import time
 import pandas as pd
 import torch
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "pipeline"))
 import model as m
-
-from silver import compare_rows, decode_rows, row_cols
+from dataset import compare_rows, decode_rows, row_cols
 
 
 def read_split(path):
@@ -60,7 +59,9 @@ def main():
     parser.add_argument("--ptr-dim", type=int, default=256)
     parser.add_argument("--min-rule", type=int, default=2)
     parser.add_argument("--ptr", choices=["dot", "biaffine"], default="dot", help="pointer scorer")
-    parser.add_argument("--dist", type=int, default=0, help="learned pointer bias per word offset up to +-dist (0 = off)")
+    parser.add_argument(
+        "--dist", type=int, default=0, help="learned pointer bias per word offset up to +-dist (0 = off)"
+    )
     parser.add_argument("--smoothing", type=float, default=0.0, help="label smoothing of the classification heads")
     parser.add_argument("--llrd", type=float, default=1.0, help="encoder lr multiplied by this per layer below the top")
     parser.add_argument("--seed", type=int, default=13)
@@ -96,7 +97,9 @@ def main():
     gold = {s: rows(splits[s], maps) for s in ("dev", "test")}
 
     groups = encoder_groups(model.encoder, args.lr, args.llrd)
-    groups.append({"params": [p for n, p in model.named_parameters() if not n.startswith("encoder.")], "lr": args.head_lr})
+    groups.append(
+        {"params": [p for n, p in model.named_parameters() if not n.startswith("encoder.")], "lr": args.head_lr}
+    )
     opt = torch.optim.AdamW(groups, weight_decay=0.01)
     steps = args.epochs * ((len(items) + args.batch - 1) // args.batch)
     sched = get_linear_schedule_with_warmup(opt, int(steps * args.warmup), steps)
@@ -135,7 +138,7 @@ def main():
         rate = dev["adj_intensified_rate"]
         print(f"epoch {epoch + 1} dev host F1 {dev['host']['f1']:.4f} intensifier F1 {dev['intensifier']['f1']:.4f} "
               f"row F1 {dev['rows']['f1']:.4f} Adj_type kappa {dev['kappa']['Adj_type']:.3f} "
-              f"ADJ intensified {rate['pred']:.2%} (rules {rate['gold']:.2%}) select {score:.4f}", flush=True)  # fmt: skip
+              f"ADJ intensified {rate['pred']:.2%} (gold {rate['gold']:.2%}) select {score:.4f}", flush=True)  # fmt: skip
         if score > best:
             best = score
             m.save(model, tokenizer, vocab, maps, args.out, vars(args))

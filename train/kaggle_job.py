@@ -45,7 +45,7 @@ def worker(gpu):
         print(f"=== gpu{gpu} {name} {' '.join(args)}", flush=True)
         with open(f"{out}/train.log", "w") as log:
             code = subprocess.call(
-                ["python", "-u", "scripts/finetune/train.py", "--out", tmp, *args],
+                ["python", "-u", "train/train.py", "--out", tmp, *args],
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 env={**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)},
