@@ -14,6 +14,7 @@ The first training set was the output of an earlier rule pipeline, mapped onto t
 | `pipeline/model.py` | the model: encoder + heads, chunking, save/load, `predict_records` |
 | `train/train.py` | training loop, dev score per epoch, keeps the best epoch, test score |
 | `pipeline/predict.py` | runs a trained model over a folder; writes the table and the label records |
+| `train/run.sh` | trains the released config in the current env on any GPU machine; extra args go to `train.py` |
 | `train/colab.sh` | trains and predicts on a Colab GPU and downloads the results |
 | `train/kaggle.sh`, `kaggle_train.py` | the same on a Kaggle T4: private dataset + private script kernel |
 | `train/sweep.sh`, `kaggle_sweep.sh`, `kaggle_job.py` | train a list of configs (`name args...` per line) and keep each `metrics.json` in `models/sweep/<name>/`; finished configs are skipped on rerun, `WATCH=1` only follows a running job. Kaggle runs one config per T4 of the T4 x2 |

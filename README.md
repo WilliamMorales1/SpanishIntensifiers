@@ -36,7 +36,7 @@ python pipeline/predict.py --text data/examples/text --speakers data/examples/sp
 | path | contents |
 | --- | --- |
 | `pipeline/` | `clean_transcripts.py` (docx -> `data/text`), `model.py` and `predict.py` (inference), `dataset.py` (label records, corrected-table merge, scoring), `int_type.py` and `int_type.json` (post-model `Int_type`), `output.py` (table writers) |
-| `train/` | `train.py` and the Kaggle/Colab runners and sweeps |
+| `train/` | `train.py`, `run.sh` (any GPU machine), the Kaggle/Colab runners and sweeps |
 | `tests/` | pytest suite |
 | `data/` (gitignored, corpus text) | `original/` docx, `text/` cleaned text, `finetune/` training data, `eval/`, `output/` model tables |
 | `data/examples/` (tracked) | one synthetic interview with its model output |
